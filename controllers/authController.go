@@ -5,7 +5,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/OltLatifi/cv-builder-back/helpers"
@@ -118,153 +117,108 @@ func Register(c *gin.Context) {
 }
 
 func Login(c *gin.Context) {
-
-	var body struct {
-		Email    string `json:"email" binding:"required"`
-		Password string `json:"password" binding:"required"`
+	type LoginBody struct {
+		// Email    string `json:"email" binding:"required"`
+		Identifier string `json:"identifier" binding:"required"`
+		Password   string `json:"password" binding:"required"`
 	}
 
+	var body LoginBody
 	if err := c.ShouldBind(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":       "Validation failed",
-			"description": err.Error(),
-		})
+		helpers.HandleError(c, http.StatusBadRequest, "Validation failed", err)
 		return
 	}
 
 	var user models.User
-	initializers.DB.First(&user, "email = ?", body.Email)
+	initializers.DB.First(&user, "email = ? OR username = ?", body.Identifier, body.Identifier)
 
 	if user.ID == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid email or password",
-		})
-
+		helpers.HandleError(c, http.StatusBadRequest, "Invalid email or password", fmt.Errorf("invalid email or password"))
 		return
 	}
 
-	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password))
-
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid email or password",
-		})
-
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password)); err != nil {
+		helpers.HandleError(c, http.StatusBadRequest, "Invalid email or password", err)
 		return
 	}
 
-	// token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-	// 	"sub": user.ID,
-	// 	"exp": time.Now().Add(time.Hour * 24 * 30).Unix(),
-	// })
-
-	// tokenString, err := token.SignedString([]byte(os.Getenv("SECRET")))
-
-	// if err != nil {
-	// 	c.JSON(http.StatusBadRequest, gin.H{
-	// 		"error": "Failed to create token",
-	// 	})
-
-	// 	return
-	// }
-
-	// c.SetSameSite(http.SameSiteLaxMode)
-	// c.SetCookie("Authorization", tokenString, 3600*24*30, "", "", false, true)
-
-	// c.JSON(http.StatusOK, gin.H{})
-
-	ttl, err := time.ParseDuration(os.Getenv("ACCESS_TOKEN_EXPIRED_IN"))
+	accessTokenDuration, err := helpers.GetEnvDuration("ACCESS_TOKEN_EXPIRED_IN")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-
-	}
-	// Generate Tokens
-	access_token, err := utils.CreateToken(ttl, user.ID, os.Getenv("ACCESS_TOKEN_PRIVATE_KEY"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
+		helpers.HandleError(c, http.StatusBadRequest, "Failed to get token duration", err)
 		return
 	}
 
-	refreshTtl, err := time.ParseDuration(os.Getenv("REFRESH_TOKEN_EXPIRED_IN"))
+	refreshTokenDuration, err := helpers.GetEnvDuration("REFRESH_TOKEN_EXPIRED_IN")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-
-	}
-
-	refresh_token, err := utils.CreateToken(refreshTtl, user.ID, os.Getenv("REFRESH_TOKEN_PRIVATE_KEY"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
+		helpers.HandleError(c, http.StatusBadRequest, "Failed to get refresh token duration", err)
 		return
 	}
 
-	maxAgeStr := os.Getenv("ACCESS_TOKEN_MAXAGE")
-	maxAge, err := strconv.Atoi(maxAgeStr)
+	access_token, err := utils.CreateToken(accessTokenDuration, user.ID, os.Getenv("ACCESS_TOKEN_PRIVATE_KEY"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-
+		helpers.HandleError(c, http.StatusBadRequest, "Failed to create access token", err)
+		return
 	}
 
-	maxAgeStrRefreshToken := os.Getenv("REFRESH_TOKEN_MAXAGE")
-	maxAgeRefreshToken, err := strconv.Atoi(maxAgeStrRefreshToken)
+	refresh_token, err := utils.CreateToken(refreshTokenDuration, user.ID, os.Getenv("REFRESH_TOKEN_PRIVATE_KEY"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-
+		helpers.HandleError(c, http.StatusBadRequest, "Failed to create refresh token", err)
+		return
 	}
 
-	c.SetCookie("access_token", access_token, maxAge*60, "/", "localhost", false, true)
-	c.SetCookie("refresh_token", refresh_token, maxAgeRefreshToken*60, "/", "localhost", false, true)
-	c.SetCookie("logged_in", "true", maxAge*60, "/", "localhost", false, false)
+	helpers.SetCookieWithEnvMaxAge(c, "access_token", access_token, "ACCESS_TOKEN_MAXAGE")
+	helpers.SetCookieWithEnvMaxAge(c, "refresh_token", refresh_token, "REFRESH_TOKEN_MAXAGE")
+	c.SetCookie("logged_in", "true", helpers.GetEnvInt("ACCESS_TOKEN_MAXAGE")*60, "/", "localhost", false, false)
 
 	c.JSON(http.StatusOK, gin.H{"status": "success", "access_token": access_token})
 }
 
 func RefreshToken(c *gin.Context) {
-	message := "could not refresh access token"
-
 	cookie, err := c.Cookie("refresh_token")
-
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": message})
+		helpers.HandleError(c, http.StatusForbidden, "Could not refresh access token", err)
 		return
 	}
 
 	sub, err := utils.ValidateToken(cookie, os.Getenv("REFRESH_TOKEN_PUBLIC_KEY"))
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": err.Error()})
+		helpers.HandleError(c, http.StatusForbidden, "Token validation failed", err)
 		return
 	}
 
 	var user models.User
-	result := initializers.DB.First(&user, "ID = ?", fmt.Sprint(sub))
-
-	if result.Error != nil {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": "the user belonging to this token no logger exists"})
+	if initializers.DB.First(&user, "ID = ?", fmt.Sprint(sub)).Error != nil {
+		helpers.HandleError(c, http.StatusForbidden, "The user belonging to this token no longer exists", fmt.Errorf("User not found"))
 		return
 	}
 
-	ttl, err := time.ParseDuration(os.Getenv("ACCESS_TOKEN_EXPIRED_IN"))
+	accessTokenDuration, err := helpers.GetEnvDuration("ACCESS_TOKEN_EXPIRED_IN")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-
-	}
-
-	access_token, err := utils.CreateToken(ttl, user.ID, os.Getenv("ACCESS_TOKEN_PRIVATE_KEY"))
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"status": "fail", "message": err.Error()})
+		helpers.HandleError(c, http.StatusBadRequest, "Failed to get token duration", err)
 		return
 	}
 
-	maxAgeStr := os.Getenv("ACCESS_TOKEN_MAXAGE")
-	maxAge, err := strconv.Atoi(maxAgeStr)
+	access_token, err := utils.CreateToken(accessTokenDuration, user.ID, os.Getenv("ACCESS_TOKEN_PRIVATE_KEY"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "fail", "message": err.Error()})
-
+		helpers.HandleError(c, http.StatusForbidden, "Failed to create access token", err)
+		return
 	}
 
-	c.SetCookie("access_token", access_token, maxAge*60, "/", "localhost", false, true)
-	c.SetCookie("logged_in", "true", maxAge*60, "/", "localhost", false, false)
-	// If we want to prolong the refresh token we add one more line here
-	// c.SetCookie("refresh_token", refresh_token, maxAgeRefreshToken*60, "/", "localhost", false, true)
+	refreshTokenDuration, err := helpers.GetEnvDuration("REFRESH_TOKEN_EXPIRED_IN")
+	if err != nil {
+		helpers.HandleError(c, http.StatusBadRequest, "Failed to get refresh token duration", err)
+		return
+	}
+
+	refresh_token, err := utils.CreateToken(refreshTokenDuration, user.ID, os.Getenv("REFRESH_TOKEN_PRIVATE_KEY"))
+	if err != nil {
+		helpers.HandleError(c, http.StatusBadRequest, "Failed to create refresh token", err)
+		return
+	}
+
+	helpers.SetCookieWithEnvMaxAge(c, "access_token", access_token, "ACCESS_TOKEN_MAXAGE")
+	helpers.SetCookieWithEnvMaxAge(c, "refresh_token", refresh_token, "REFRESH_TOKEN_MAXAGE")
+	c.SetCookie("logged_in", "true", helpers.GetEnvInt("ACCESS_TOKEN_MAXAGE")*60, "/", "localhost", false, false)
 
 	c.JSON(http.StatusOK, gin.H{"status": "success", "access_token": access_token})
 }
