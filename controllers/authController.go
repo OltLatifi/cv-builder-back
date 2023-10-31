@@ -130,10 +130,15 @@ func Login(c *gin.Context) {
 	}
 
 	var user models.User
-	initializers.DB.First(&user, "email = ? OR username = ?", body.Identifier, body.Identifier)
+	initializers.DB.Preload("Status").First(&user, "email = ? OR username = ?", body.Identifier, body.Identifier)
 
 	if user.ID == 0 {
 		helpers.HandleError(c, http.StatusBadRequest, "Invalid email or password", fmt.Errorf("invalid email or password"))
+		return
+	}
+
+	if user.StatusID != 1  {
+		helpers.HandleError(c, http.StatusBadRequest, user.Status.Name, fmt.Errorf(user.Status.Description))
 		return
 	}
 
