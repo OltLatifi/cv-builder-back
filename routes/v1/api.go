@@ -18,6 +18,13 @@ func SetupApiRoutes(r *gin.Engine) {
 		// user
 		v1.GET("/user-profile", middleware.DeserializeUser(), controllers.UserProfile)
 
+		// Language
+		languages := v1.Group("/languages")
+		{
+			languages.GET("/", middleware.DeserializeUser(), controllers.GetLanguages)
+			languages.POST("/register", middleware.DeserializeUser(), controllers.SetUserLanguage)
+		}
+
 	}
 
 }
