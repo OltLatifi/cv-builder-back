@@ -16,7 +16,6 @@ func SetupApiRoutes(r *gin.Engine) {
 		v1.POST("/logout", middleware.DeserializeUser(), controllers.Logout)
 
 		// user
-
 		v1.GET("/user-profile", middleware.DeserializeUser(), controllers.UserProfile)
 
 	}
