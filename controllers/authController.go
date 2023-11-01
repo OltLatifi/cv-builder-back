@@ -117,6 +117,7 @@ func Register(c *gin.Context) {
 }
 
 func Login(c *gin.Context) {
+	helpers.SendEmail("oltlatifi2003@gmail.com")
 	type LoginBody struct {
 		// Email    string `json:"email" binding:"required"`
 		Identifier string `json:"identifier" binding:"required"`
