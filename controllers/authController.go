@@ -12,7 +12,8 @@ import (
 	"github.com/OltLatifi/cv-builder-back/models"
 	"github.com/OltLatifi/cv-builder-back/utils"
 	"github.com/gin-gonic/gin"
-	// "github.com/gin-gonic/gin/binding"
+	"gorm.io/gorm"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -142,6 +143,10 @@ func Login(c *gin.Context) {
 	}
 
 	if user.StatusID != 1  {
+		// resend verification token
+		token := utils.CreateVerificationToken(user.ID)
+		helpers.SendEmail(user.Email, token)
+
 		helpers.HandleError(c, http.StatusBadRequest, user.Status.Name, fmt.Errorf(user.Status.Description))
 		return
 	}
@@ -238,4 +243,62 @@ func Logout(c *gin.Context) {
 	c.SetCookie("logged_in", "", -1, "/", "localhost", false, false)
 
 	c.JSON(http.StatusOK, gin.H{"status": "success"})
+}
+
+func VerifyUser(c *gin.Context) {
+	type tokenBody struct{
+		Token string `json:"token" binding:"required"`
+	}
+
+	var body tokenBody
+	var token models.VerificationToken
+
+	if err := c.Bind(&body); err != nil {
+		helpers.HandleError(c, http.StatusBadRequest, "Validation failed", err)
+		return
+	}
+
+	if err := initializers.DB.Where("token = ?", body.Token).First(&token).Error; err != nil  {
+
+		if err == gorm.ErrRecordNotFound {
+			initializers.DB.Unscoped().Delete(&token)
+            c.JSON(http.StatusNotFound, gin.H{
+                "error":       "User not found",
+                "description": "User with the provided token not found",
+            })
+        } else {
+            c.JSON(http.StatusInternalServerError, gin.H{
+                "error":       "Database error",
+                "description": err.Error(),
+            })
+        }
+        return
+	}
+
+	// check if token is expired
+	if !time.Now().Before(token.ValidUntil) {
+		initializers.DB.Unscoped().Delete(&token)
+		c.JSON(http.StatusGone, gin.H{
+			"error":       "Token expired",
+			"description": "Token has expired",
+		})
+	}
+
+	var user models.User
+	if err := initializers.DB.Where("id = ?", token.UserID).First(&user).Error; err != nil  {
+		if err == gorm.ErrRecordNotFound {
+            c.JSON(http.StatusNotFound, gin.H{
+                "error":       "User not found",
+                "description": "User with the provided token not found",
+            })
+        } 
+	}
+
+	user.StatusID = 1
+	initializers.DB.Save(&user)
+	initializers.DB.Unscoped().Delete(&token)
+
+	c.JSON(http.StatusOK, gin.H{
+		"info": "User verified succesfully",
+	})
 }

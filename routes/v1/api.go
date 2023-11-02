@@ -13,6 +13,7 @@ func SetupApiRoutes(r *gin.Engine) {
 		v1.POST("/register", controllers.Register)
 		v1.POST("/login", controllers.Login)
 		v1.GET("/refresh", controllers.RefreshToken)
+		v1.POST("/verify", controllers.VerifyUser)
 		v1.POST("/logout", middleware.DeserializeUser(), controllers.Logout)
 
 		// user
