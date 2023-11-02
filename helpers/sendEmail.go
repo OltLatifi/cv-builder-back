@@ -17,7 +17,7 @@ var htmlBody = `
 </body>
 `
 
-func SendEmail(to string) {
+func SendEmail(to string, token string) {
     from := os.Getenv("EMAIL")
     password := os.Getenv("EMAIL_HOST_PASSWORD")
     smtpHost := os.Getenv("EMAIL_HOST")
@@ -41,7 +41,8 @@ func SendEmail(to string) {
     email.AddTo(to)
     email.SetSubject("New Go Email")
 
-    email.SetBody(mail.TextHTML, htmlBody)
+    // this is a permanent solution, the token won't be sent on the email
+    email.SetBody(mail.TextHTML, htmlBody + token)
 
     err = email.Send(smtpClient)
     if err != nil {

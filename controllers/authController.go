@@ -12,6 +12,7 @@ import (
 	"github.com/OltLatifi/cv-builder-back/models"
 	"github.com/OltLatifi/cv-builder-back/utils"
 	"github.com/gin-gonic/gin"
+	// "github.com/gin-gonic/gin/binding"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -96,11 +97,14 @@ func Register(c *gin.Context) {
 		Image:       imagePath,
 		Address:     body.Address,
 		Bio:         body.Bio,
-		StatusID:    defaultStatusID(body.StatusID),
+		StatusID:    5,
 		RoleID:      body.RoleID,
 	}
 
 	result := initializers.DB.Create(&user)
+
+	token := utils.CreateVerificationToken(user.ID)
+	helpers.SendEmail(user.Email, token)
 
 	if result.Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -117,7 +121,6 @@ func Register(c *gin.Context) {
 }
 
 func Login(c *gin.Context) {
-	helpers.SendEmail("oltlatifi2003@gmail.com")
 	type LoginBody struct {
 		// Email    string `json:"email" binding:"required"`
 		Identifier string `json:"identifier" binding:"required"`
