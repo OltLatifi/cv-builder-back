@@ -98,23 +98,24 @@ func Register(c *gin.Context) {
 		Image:       imagePath,
 		Address:     body.Address,
 		Bio:         body.Bio,
-		StatusID:    5,
+		StatusID:    defaultStatusID(body.StatusID),
 		RoleID:      body.RoleID,
 	}
 
 	result := initializers.DB.Create(&user)
 
-	token := utils.CreateVerificationToken(user.ID)
-	helpers.SendEmail(user.Email, token)
-
+	
 	if result.Error != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":       "Failed to create user",
 			"description": result.Error.Error(),
 		})
-
+		
 		return
 	}
+
+	token := utils.CreateVerificationToken(user.ID)
+	helpers.SendEmail(user.Email, token)
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": user,
@@ -143,10 +144,11 @@ func Login(c *gin.Context) {
 	}
 
 	if user.StatusID != 1  {
-		// resend verification token
-		token := utils.CreateVerificationToken(user.ID)
-		helpers.SendEmail(user.Email, token)
-
+		if user.StatusID == 5 {
+			// resend verification token
+			token := utils.CreateVerificationToken(user.ID)
+			helpers.SendEmail(user.Email, token)
+		}
 		helpers.HandleError(c, http.StatusBadRequest, user.Status.Name, fmt.Errorf(user.Status.Description))
 		return
 	}
@@ -258,7 +260,7 @@ func VerifyUser(c *gin.Context) {
 		return
 	}
 
-	if err := initializers.DB.Where("token = ?", body.Token).First(&token).Error; err != nil  {
+	if err := initializers.DB.Preload("User").Where("token = ?", body.Token).First(&token).Error; err != nil  {
 
 		if err == gorm.ErrRecordNotFound {
 			initializers.DB.Unscoped().Delete(&token)
@@ -284,18 +286,8 @@ func VerifyUser(c *gin.Context) {
 		})
 	}
 
-	var user models.User
-	if err := initializers.DB.Where("id = ?", token.UserID).First(&user).Error; err != nil  {
-		if err == gorm.ErrRecordNotFound {
-            c.JSON(http.StatusNotFound, gin.H{
-                "error":       "User not found",
-                "description": "User with the provided token not found",
-            })
-        } 
-	}
-
-	user.StatusID = 1
-	initializers.DB.Save(&user)
+	token.User.StatusID = 1
+	initializers.DB.Save(&token.User)
 	initializers.DB.Unscoped().Delete(&token)
 
 	c.JSON(http.StatusOK, gin.H{
