@@ -23,6 +23,8 @@ func SetupApiRoutes(r *gin.Engine) {
 		{
 			languages.GET("/", middleware.DeserializeUser(), controllers.GetLanguages)
 			languages.POST("/register", middleware.DeserializeUser(), controllers.SetUserLanguage)
+			languages.PATCH("/update/:id", middleware.DeserializeUser(), controllers.EditUserLanguage)
+			languages.DELETE("/delete/:id", middleware.DeserializeUser(), controllers.DeleteUserLanguage)
 		}
 
 	}
