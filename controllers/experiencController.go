@@ -143,6 +143,7 @@ func EditExperience(c *gin.Context) {
 }
 
 func DeleteExperience(c *gin.Context) {
+
 	experienceID := c.Param("id")
 	currentUser := c.MustGet("currentUser").(models.User)
 
