@@ -9,5 +9,6 @@ func SyncDatabase() {
 		&models.User{},
 		&models.Language{},
 		&models.VerificationToken{},
+		&models.Experience{},
 	)
 }
