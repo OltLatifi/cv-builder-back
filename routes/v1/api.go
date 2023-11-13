@@ -28,6 +28,15 @@ func SetupApiRoutes(r *gin.Engine) {
 			languages.DELETE("/delete/:id", middleware.DeserializeUser(), controllers.DeleteUserLanguage)
 		}
 
+		// Experience
+		experience := v1.Group("/experience")
+		{
+			experience.GET("/", middleware.DeserializeUser(), controllers.GetExperiences)
+			experience.POST("/register", middleware.DeserializeUser(), controllers.CreateExperience)
+			experience.PUT("/update/:id", middleware.DeserializeUser(), controllers.EditExperience)
+			experience.DELETE("/delete/:id", middleware.DeserializeUser(), controllers.DeleteExperience)
+		}
+
 	}
 
 }
